@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DO-254 Tracker (Reads state.json)</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background: #f5f5f5; }
+    .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+    .status-item { padding: 15px; border-radius: 6px; text-align: center; cursor: pointer; }
+    .status-red { background: #fee; border: 2px solid #fcc; color: #c33; }
+    .status-green { background: #efe; border: 2px solid #4c4; color: #080; }
+    .instructions { background: #e3f2fd; padding: 15px; border-left: 4px solid #2196f3; margin: 20px 0; }
+    .commit-section { background: #fff3cd; padding: 15px; border-radius: 6px; margin: 20px 0; }
+    button { background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+    button:hover { background: #218838; }
+    .timestamp { font-size: 0.9em; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>DO-254 Tracker (Reads/Writes state.json)</h1>
+    
+    <div class="instructions">
+      <strong>📁 Place state.json in same folder as this HTML</strong><br>
+      1. **Auto-loads** from state.json<br>
+      2. Click boxes → **Auto-saves** to state.json<br>
+      3. Drag updated file to GitHub → Commit → Deploy!
+    </div>
+
+    <div id="state-display">
+      <div class="status-grid">
+        <div class="status-item" id="requirements" onclick="toggleStatus('requirements')">
+          <strong>Requirements Approved</strong><br><span id="req-icon">⏳</span>
+        </div>
+        <div class="status-item" id="architecture" onclick="toggleStatus('architecture')">
+          <strong>Architecture Approved</strong><br><span id="arch-icon">⏳</span>
+        </div>
+        <div class="status-item" id="code-review" onclick="toggleStatus('code-review')">
+          <strong>Code Review Complete</strong><br><span id="code-icon">⏳</span>
+        </div>
+      </div>
+      
+      <div class="timestamp">
+        <strong>Last Updated:</strong> <span id="timestamp">Loading state.json...</span>
+      </div>
+    </div>
+
+    <div class="commit-section">
+      <h3>🚀 Deploy to GitHub</h3>
+      <button onclick="saveToFile()">💾 Save to state.json</button>
+      <button onclick="downloadFile()">📥 Download state.json</button>
+      <button onclick="copyGitCommands()">📋 Copy Git Commands</button>
+      <button onclick="loadFromFileInput()">📂 Load from File</button>
+      <input type="file" id="file-input" accept=".json" style="display:none;">
+    </div>
+  </div>
+
+  <script>
+    let state = null;
+    let fileHandle = null;
+
+    // STEP 1: Load from state.json file
+    async function loadFromStateFile() {
+      try {
+        const input = document.getElementById('file-input');
+        input.click();
+        // Will trigger loadFromFileInput() below
+      } catch (error) {
+        console.log('Click "Load from File" to start');
+      }
+    }
+
+    // STEP 2: When user selects state.json
+    async function loadFromFileInput() {
+      const input = document.getElementById('file-input');
+      const file = input.files[0];
+      if (!file) return;
+
+      const text = await file.text();
+      state = JSON.parse(text);
+      
+      // Request permission to save back to this file
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName: 'state.json',
+        types: [{ description: 'JSON files', accept: {'application/json': ['.json']} }]
+      });
+
+      displayState();
+      document.getElementById('timestamp').textContent = `Loaded: ${new Date().toLocaleString()}`;
+    }
+
+    // Display current state
+    function displayState() {
+      if (!state) return;
+      
+      const { designReview, lastUpdated } = state;
+      
+      ['requirements', 'architecture', 'code-review'].forEach(key => {
+        const field = key === 'code-review' ? 'codeReviewComplete' : key + 'Approved';
+        const approved = designReview[field];
+        const element = document.getElementById(key);
+        const icon = document.getElementById(key.replace('-', '') + '-icon');
+        
+        element.className = `status-item ${approved ? 'status-green' : 'status-red'}`;
+        icon.textContent = approved ? '✅' : '❌';
+      });
+      
+      document.getElementById('timestamp').textContent = 
+        new Date(lastUpdated).toLocaleString();
+    }
+
+    // Toggle status and auto-save
+    async function toggleStatus(item) {
+      if (!state || !fileHandle) {
+        alert('First click "Load from File" to open state.json');
+        return;
+      }
+
+      const key = item === 'code-review' ? 'codeReviewComplete' : item + 'Approved';
+      state.designReview[key] = !state.designReview[key];
+      state.lastUpdated = new Date().toISOString();
+      
+      await saveToFile();
+      displayState();
+    }
+
+    // Save back to the opened file
+    async function saveToFile() {
+      if (!fileHandle) return;
+      
+      const writable = await fileHandle.createWritable();
+      await writable.write(JSON.stringify(state, null, 2));
+      await writable.close();
+      
+      console.log('✅ Saved to state.json');
+    }
+
+    // Download as new file
+    function downloadFile() {
+      if (!state) {
+        alert('No state to save! Load state.json first.');
+        return;
+      }
+      const dataStr = JSON.stringify(state, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+      const link = document.createElement('a');
+      link.href = dataUri;
+      link.download = 'state.json';
+      link.click();
+    }
+
+    function copyGitCommands() {
+      const commands = `git add state.json\ngit commit -m "Update DO-254: ${new Date().toLocaleString()}"\ngit push`;
+      navigator.clipboard.writeText(commands);
+      alert('✅ Commands copied!');
+    }
+
+    // Auto-prompt on load
+    window.onload = () => {
+      setTimeout(() => {
+        if (confirm('📁 Open state.json to start?')) {
+          loadFromStateFile();
+        }
+      }, 500);
+    };
+
+    // File input handler
+    document.getElementById('file-input').onchange = loadFromFileInput;
+  </script>
+</body>
+</html>
